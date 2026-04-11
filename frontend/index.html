@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>খবর.ai — আজকের বাংলা সংবাদ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-white min-h-screen font-sans">
+
+  <!-- Preferences Modal -->
+  <div id="pref-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center px-4 overflow-y-auto py-8">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full">
+
+      <!-- Step 1: Categories -->
+      <div id="step-cat">
+        <h2 class="text-xl font-bold text-green-400 mb-1">কোন ধরনের খবর চান?</h2>
+        <p class="text-sm text-gray-400 mb-4">একাধিক বেছে নিতে পারবেন</p>
+        <div id="cat-list" class="grid grid-cols-2 gap-2 mb-6"></div>
+        <button onclick="goToSources()"
+          class="w-full bg-green-500 hover:bg-green-400 text-black font-bold py-2.5 rounded-xl transition">
+          পরবর্তী → সংবাদ মাধ্যম
+        </button>
+      </div>
+
+      <!-- Step 2: Sources -->
+      <div id="step-src" class="hidden">
+        <h2 class="text-xl font-bold text-green-400 mb-1">কোন মাধ্যম আগে দেখবেন?</h2>
+        <p class="text-sm text-gray-400 mb-4">▲▼ দিয়ে সাজান</p>
+        <div id="source-list" class="flex flex-col gap-2 mb-6"></div>
+        <div class="flex gap-2">
+          <button onclick="goToCats()"
+            class="flex-1 bg-gray-700 hover:bg-gray-600 py-2.5 rounded-xl transition text-sm">
+            ← পেছনে
+          </button>
+          <button onclick="savePreferences()"
+            class="flex-1 bg-green-500 hover:bg-green-400 text-black font-bold py-2.5 rounded-xl transition">
+            সংরক্ষণ ✓
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-gray-900 border-b border-gray-800 py-4 px-5 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">📰</span>
+      <div>
+        <h1 class="text-xl font-bold text-green-400">খবর.ai</h1>
+        <p class="text-xs text-gray-400">আজকের শীর্ষ বাংলা সংবাদ</p>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="devRefresh()"
+        class="text-xs bg-red-900 hover:bg-red-800 border border-red-700 px-3 py-1.5 rounded-lg transition">
+        🔄 DEV Refresh
+      </button>
+      <button onclick="openPreferences()"
+        class="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-600 px-3 py-1.5 rounded-lg transition">
+        ⚙️ পছন্দ
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-8">
+    <div id="loading" class="text-center text-gray-400 py-20 text-lg">সংবাদ লোড হচ্ছে...</div>
+    <div id="news-container" class="hidden flex flex-col gap-4"></div>
+    <div id="error" class="hidden text-center text-red-400 py-20"></div>
+  </main>
+
+  <script>
+    const API = "http://127.0.0.1:8000";
+
+    const ALL_SOURCES    = ["Prothom Alo", "BBC Bangla", "Kaler Kantho", "bdnews24"];
+    const ALL_CATEGORIES = ["জাতীয়", "আন্তর্জাতিক", "খেলাধুলা", "ব্যবসা", "বিনোদন", "প্রযুক্তি"];
+
+    const CAT_ICONS = {
+      "জাতীয়": "🇧🇩", "আন্তর্জাতিক": "🌍", "খেলাধুলা": "⚽",
+      "ব্যবসা": "💼", "বিনোদন": "🎬", "প্রযুক্তি": "💻"
+    };
+
+    const SOURCE_COLORS = {
+      "Prothom Alo":  "bg-blue-900 text-blue-300",
+      "BBC Bangla":   "bg-red-900 text-red-300",
+      "Kaler Kantho": "bg-purple-900 text-purple-300",
+      "bdnews24":     "bg-orange-900 text-orange-300",
+    };
+
+    const CAT_COLORS = {
+      "জাতীয়":      "bg-green-900 text-green-300",
+      "আন্তর্জাতিক": "bg-blue-900 text-blue-300",
+      "খেলাধুলা":    "bg-yellow-900 text-yellow-300",
+      "ব্যবসা":      "bg-orange-900 text-orange-300",
+      "বিনোদন":      "bg-pink-900 text-pink-300",
+      "প্রযুক্তি":   "bg-cyan-900 text-cyan-300",
+    };
+
+    function getPrefs() {
+      const s = localStorage.getItem("khobor_prefs");
+      return s ? JSON.parse(s) : null;
+    }
+
+    function openPreferences() {
+      const prefs = getPrefs();
+      const selectedCats = prefs?.categories || ALL_CATEGORIES;
+      const list = document.getElementById("cat-list");
+      list.innerHTML = "";
+
+      ALL_CATEGORIES.forEach(cat => {
+        const isSelected = selectedCats.includes(cat);
+        const btn = document.createElement("button");
+        btn.className = `flex items-center gap-2 px-4 py-3 rounded-xl border transition text-sm font-medium w-full
+          ${isSelected ? "bg-green-800 border-green-500 text-white" : "bg-gray-800 border-gray-700 text-gray-400"}`;
+        btn.dataset.cat = cat;
+        btn.innerHTML = `${CAT_ICONS[cat]} ${cat}`;
+        btn.onclick = () => {
+          const active = btn.classList.contains("bg-green-800");
+          btn.className = `flex items-center gap-2 px-4 py-3 rounded-xl border transition text-sm font-medium w-full
+            ${active ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-green-800 border-green-500 text-white"}`;
+        };
+        list.appendChild(btn);
+      });
+
+      document.getElementById("step-cat").classList.remove("hidden");
+      document.getElementById("step-src").classList.add("hidden");
+      document.getElementById("pref-modal").classList.remove("hidden");
+    }
+
+    function goToSources() {
+      const selected = [...document.querySelectorAll("#cat-list button")]
+        .filter(b => b.classList.contains("bg-green-800"))
+        .map(b => b.dataset.cat);
+
+      if (selected.length === 0) {
+        alert("অন্তত একটি ক্যাটাগরি বেছে নিন।");
+        return;
+      }
+      window._tempCats = selected;
+
+      const prefs = getPrefs();
+      const srcOrder = prefs?.sources || ALL_SOURCES;
+      const list = document.getElementById("source-list");
+      list.innerHTML = "";
+
+      srcOrder.forEach((source, i) => {
+        const item = document.createElement("div");
+        item.className = "flex items-center justify-between bg-gray-800 border border-gray-700 rounded-xl px-4 py-3";
+        item.dataset.source = source;
+        item.innerHTML = `
+          <div class="flex items-center gap-3">
+            <span class="text-gray-500 text-sm">#${i+1}</span>
+            <span class="font-medium">${source}</span>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="moveUp(this)" class="text-gray-400 hover:text-white px-2">▲</button>
+            <button onclick="moveDown(this)" class="text-gray-400 hover:text-white px-2">▼</button>
+          </div>`;
+        list.appendChild(item);
+      });
+
+      document.getElementById("step-cat").classList.add("hidden");
+      document.getElementById("step-src").classList.remove("hidden");
+    }
+
+    function goToCats() {
+      document.getElementById("step-src").classList.add("hidden");
+      document.getElementById("step-cat").classList.remove("hidden");
+    }
+
+    function moveUp(btn) {
+      const item = btn.closest("[data-source]");
+      const prev = item.previousElementSibling;
+      if (prev) item.parentNode.insertBefore(item, prev);
+      refreshNumbers();
+    }
+
+    function moveDown(btn) {
+      const item = btn.closest("[data-source]");
+      const next = item.nextElementSibling;
+      if (next) next.parentNode.insertBefore(next, item);
+      refreshNumbers();
+    }
+
+    function refreshNumbers() {
+      document.querySelectorAll("#source-list [data-source]").forEach((el, i) => {
+        el.querySelector("span.text-gray-500").textContent = `#${i+1}`;
+      });
+    }
+
+    function savePreferences() {
+      const sources = [...document.querySelectorAll("#source-list [data-source]")]
+        .map(el => el.dataset.source);
+      localStorage.setItem("khobor_prefs", JSON.stringify({
+        categories: window._tempCats,
+        sources
+      }));
+      document.getElementById("pref-modal").classList.add("hidden");
+      reloadNews();
+    }
+
+    async function devRefresh() {
+      document.getElementById("news-container").innerHTML = "";
+      document.getElementById("news-container").classList.add("hidden");
+      document.getElementById("error").classList.add("hidden");
+      document.getElementById("loading").classList.remove("hidden");
+      document.getElementById("loading").textContent = "ডেটা মুছে পুনরায় লোড হচ্ছে...";
+      await fetch(`${API}/api/dev/refresh`, { method: "POST" });
+      loadNews();
+    }
+
+    function reloadNews() {
+      document.getElementById("news-container").innerHTML = "";
+      document.getElementById("news-container").classList.add("hidden");
+      document.getElementById("error").classList.add("hidden");
+      document.getElementById("loading").classList.remove("hidden");
+      document.getElementById("loading").textContent = "সংবাদ লোড হচ্ছে...";
+      loadNews();
+    }
+
+    async function loadNews() {
+      const loading   = document.getElementById("loading");
+      const container = document.getElementById("news-container");
+      const errorDiv  = document.getElementById("error");
+
+      const prefs = getPrefs();
+      if (!prefs) {
+        loading.classList.add("hidden");
+        openPreferences();
+        return;
+      }
+
+      const sp = encodeURIComponent(prefs.sources.join(","));
+      const cp = encodeURIComponent(prefs.categories.join(","));
+
+      try {
+        const res  = await fetch(`${API}/api/news/today?sources=${sp}&categories=${cp}`);
+        if (!res.ok) throw new Error("সংবাদ পাওয়া যায়নি");
+        const data = await res.json();
+
+        loading.classList.add("hidden");
+        container.classList.remove("hidden");
+        container.innerHTML = "";
+
+        let currentSource = null;
+
+        data.articles.forEach(article => {
+          if (article.source !== currentSource) {
+            currentSource = article.source;
+            const div = document.createElement("div");
+            div.className = "flex items-center gap-3 mt-6 mb-1";
+            div.innerHTML = `
+              <span class="text-xs font-semibold ${SOURCE_COLORS[article.source] || 'bg-gray-800 text-gray-300'} px-3 py-1 rounded-full">${article.source}</span>
+              <div class="flex-1 h-px bg-gray-800"></div>`;
+            container.appendChild(div);
+          }
+
+          const card = document.createElement("div");
+          card.className = "bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-green-500 transition";
+          card.innerHTML = `
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs px-2 py-0.5 rounded-full ${CAT_COLORS[article.category] || 'bg-gray-700 text-gray-300'}">
+                ${CAT_ICONS[article.category] || ''} ${article.category || ''}
+              </span>
+            </div>
+            <h2 class="text-base font-semibold text-white mb-2 leading-snug">${article.title}</h2>
+            <p class="text-sm text-gray-400 mb-3">${article.ai_summary || article.summary || "সারসংক্ষেপ নেই"}</p>
+            <a href="${article.content_url}" target="_blank"
+               class="text-sm text-green-400 hover:underline">পুরো খবর পড়ুন →</a>`;
+          container.appendChild(card);
+        });
+
+      } catch (err) {
+        loading.classList.add("hidden");
+        errorDiv.classList.remove("hidden");
+        errorDiv.textContent = err.message;
+      }
+    }
+
+    loadNews();
+  </script>
+</body>
+</html>
